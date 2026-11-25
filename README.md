@@ -39,5 +39,6 @@ then visit http://localhost:8000.
 
 ## Dead-link fail-safe
 
+- **Images** (GIFs, PNGs, JPGs) are shown full-screen on the site itself instead of redirecting, so you skip Imgur's ad page. Tap for another.
 - **On every visit:** before redirecting, the page checks YouTube links (via their thumbnail) and image links (does the image load, or has Imgur replaced it with its "removed" placeholder?). A dead link is skipped and another one is picked. Other sites can't be checked from the browser, so they're always used.
 - **Once a day:** the *Remove dead links* GitHub Action (`.github/workflows/check-links.yml`) checks every link and comments out the ones that are clearly gone, e.g. `# removed 2026-11-25 (HTTP 404): https://…`. To restore one, delete the `# removed …: ` prefix. You can also run it by hand from the repo's **Actions** tab.
