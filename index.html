@@ -109,13 +109,63 @@
           showError("No valid links found in " + LINKS_FILE + ". Each URL must start with http:// or https://.");
           return;
         }
-        const choice = pickRandom(links);
-        status.innerHTML = 'Redirecting to <a href="' + encodeURI(choice.url) + '"></a>…';
-        status.querySelector("a").textContent = choice.url;
-        // replace() keeps the redirect page out of the back-button history.
-        window.location.replace(choice.url);
+        return pickWorkingLink(links).then(choice => {
+          if (!choice) {
+            showError("Every link in " + LINKS_FILE + " seems to be broken or removed.");
+            return;
+          }
+          status.innerHTML = 'Redirecting to <a href="' + encodeURI(choice.url) + '"></a>…';
+          status.querySelector("a").textContent = choice.url;
+          // replace() keeps the redirect page out of the back-button history.
+          window.location.replace(choice.url);
+        });
       })
       .catch(err => showError(err.message));
+
+    // ---- Fail-safe: check a link before going there, and re-roll if it's dead ----
+
+    // Keep picking (without repeats) until a link passes the check.
+    async function pickWorkingLink(links) {
+      let remaining = links.slice();
+      while (remaining.length) {
+        const choice = pickRandom(remaining);
+        if (await isAlive(choice.url)) return choice;
+        console.warn("Skipping dead link:", choice.url);
+        remaining = remaining.filter(l => l !== choice);
+      }
+      return null;
+    }
+
+    // Returns false only when we're confident the link is dead.
+    // Anything we can't check (or a slow check) counts as alive.
+    function isAlive(url) {
+      const ytId = youTubeId(url);
+      if (ytId) {
+        // Missing YouTube videos return a 120×90 placeholder thumbnail.
+        return checkImage("https://i.ytimg.com/vi/" + ytId + "/mqdefault.jpg",
+          img => img.naturalWidth !== 120);
+      }
+      if (/\.(gif|png|jpe?g|webp)(\?|#|$)/i.test(url) || /\/\/i\.imgur\.com\//i.test(url)) {
+        // Removed Imgur images are swapped for a 161×81 "removed" placeholder.
+        return checkImage(url, img => !(img.naturalWidth === 161 && img.naturalHeight === 81));
+      }
+      return Promise.resolve(true);
+    }
+
+    function youTubeId(url) {
+      const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/))([\w-]{11})/i);
+      return m ? m[1] : null;
+    }
+
+    function checkImage(src, looksOk, timeoutMs = 5000) {
+      return new Promise(resolve => {
+        const img = new Image();
+        const timer = setTimeout(() => resolve(true), timeoutMs);
+        img.onload = () => { clearTimeout(timer); resolve(looksOk(img)); };
+        img.onerror = () => { clearTimeout(timer); resolve(false); };
+        img.src = src;
+      });
+    }
   </script>
 </body>
 </html>
