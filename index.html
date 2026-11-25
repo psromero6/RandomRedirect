@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redirecting…</title>
+  <meta name="robots" content="noindex">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f6f6f4;
+      color: #333;
+      text-align: center;
+    }
+    a { color: #2b59c3; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <main>
+    <p id="status">Picking a random link…</p>
+    <noscript>This page needs JavaScript to pick a random link.</noscript>
+  </main>
+
+  <script>
+    // Name of the table file in the same folder as this page.
+    const LINKS_FILE = "links.csv";
+
+    const status = document.getElementById("status");
+
+    function showError(message) {
+      status.className = "error";
+      status.textContent = message;
+    }
+
+    // Splits one CSV line into cells, respecting "quoted, values".
+    function parseCsvLine(line) {
+      const cells = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+          if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+          else if (ch === '"') { inQuotes = false; }
+          else { current += ch; }
+        } else if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ",") {
+          cells.push(current.trim());
+          current = "";
+        } else {
+          current += ch;
+        }
+      }
+      cells.push(current.trim());
+      return cells;
+    }
+
+    // Reads the table: first column is the URL, optional "weight" column
+    // makes some links more likely. Blank lines and lines starting with # are skipped.
+    function parseLinks(text) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim() && !l.trim().startsWith("#"));
+      if (!lines.length) return [];
+
+      let header = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+      let urlCol = header.indexOf("url");
+      let weightCol = header.indexOf("weight");
+      let rows = lines.slice(1);
+
+      // No header row? Treat every line as data with the URL in column 1.
+      if (urlCol === -1) {
+        urlCol = 0;
+        weightCol = -1;
+        rows = lines;
+      }
+
+      return rows.map(parseCsvLine)
+        .map(cells => ({
+          url: cells[urlCol],
+          weight: weightCol >= 0 && cells[weightCol] !== "" ? Number(cells[weightCol]) : 1
+        }))
+        .filter(l => /^https?:\/\//i.test(l.url || "") && l.weight > 0);
+    }
+
+    function pickRandom(links) {
+      const total = links.reduce((sum, l) => sum + l.weight, 0);
+      let r = Math.random() * total;
+      for (const l of links) {
+        r -= l.weight;
+        if (r < 0) return l;
+      }
+      return links[links.length - 1];
+    }
+
+    // cache: "no-store" so edits to links.csv show up right away.
+    fetch(LINKS_FILE, { cache: "no-store" })
+      .then(res => {
+        if (!res.ok) throw new Error("Couldn't load " + LINKS_FILE + " (HTTP " + res.status + ").");
+        return res.text();
+      })
+      .then(text => {
+        const links = parseLinks(text);
+        if (!links.length) {
+          showError("No valid links found in " + LINKS_FILE + ". Each URL must start with http:// or https://.");
+          return;
+        }
+        const choice = pickRandom(links);
+        status.innerHTML = 'Redirecting to <a href="' + encodeURI(choice.url) + '"></a>…';
+        status.querySelector("a").textContent = choice.url;
+        // replace() keeps the redirect page out of the back-button history.
+        window.location.replace(choice.url);
+      })
+      .catch(err => showError(err.message));
+  </script>
+</body>
+</html>
